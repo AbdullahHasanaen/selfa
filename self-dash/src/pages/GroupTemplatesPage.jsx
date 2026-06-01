@@ -3,6 +3,7 @@ import { getGroupTemplates, createGroupTemplate, toggleGroupTemplate } from '../
 import { useToast } from '../hooks/useToast'
 import { useFetch } from '../hooks/useFetch'
 import { formatIQD } from '../utils/formatters'
+import { getApiError } from '../utils/apiError'
 import Card from '../components/ui/Card'
 import Button from '../components/ui/Button'
 import Input from '../components/ui/Input'
@@ -14,12 +15,12 @@ import Modal from '../components/ui/Modal'
 export default function GroupTemplatesPage() {
   const [showCreate, setShowCreate] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const [form, setForm] = useState({ totalAmount: '', durationMonths: '', memberCapacity: '' })
+  const [form, setForm] = useState({ totalAmount: '', durationMonths: '' })
   const { toast } = useToast()
 
   const fetchTemplates = useCallback(async () => {
     const { data } = await getGroupTemplates()
-    return Array.isArray(data) ? data : data.items || []
+    return Array.isArray(data) ? data : []
   }, [])
 
   const { data: templates = [], loading, refetch } = useFetch(fetchTemplates)
@@ -31,14 +32,13 @@ export default function GroupTemplatesPage() {
       await createGroupTemplate({
         totalAmount: Number(form.totalAmount),
         durationMonths: Number(form.durationMonths),
-        memberCapacity: Number(form.memberCapacity),
       })
       toast.success('تم إنشاء القالب بنجاح')
       setShowCreate(false)
-      setForm({ totalAmount: '', durationMonths: '', memberCapacity: '' })
+      setForm({ totalAmount: '', durationMonths: '' })
       refetch()
     } catch (err) {
-      toast.error(err.response?.data?.message || 'فشل إنشاء القالب')
+      toast.error(getApiError(err, 'فشل إنشاء القالب'))
     } finally {
       setSubmitting(false)
     }
@@ -49,8 +49,8 @@ export default function GroupTemplatesPage() {
       await toggleGroupTemplate(id)
       toast.success('تم تحديث حالة القالب')
       refetch()
-    } catch {
-      toast.error('فشل تحديث حالة القالب')
+    } catch (err) {
+      toast.error(getApiError(err, 'فشل تحديث حالة القالب'))
     }
   }
 
@@ -127,14 +127,9 @@ export default function GroupTemplatesPage() {
             placeholder="10"
             required
           />
-          <Input
-            label="عدد الأعضاء"
-            type="number"
-            value={form.memberCapacity}
-            onChange={(e) => setForm({ ...form, memberCapacity: e.target.value })}
-            placeholder="10"
-            required
-          />
+          <p className="text-xs text-slate-500">
+            عدد الأعضاء والقسط الشهري يُحسبان تلقائياً من السيرver
+          </p>
           <div className="flex gap-3 justify-end pt-2">
             <Button variant="secondary" type="button" onClick={() => setShowCreate(false)}>
               إلغاء

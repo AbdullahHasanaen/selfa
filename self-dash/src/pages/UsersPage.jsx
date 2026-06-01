@@ -4,12 +4,13 @@ import {
   createUser,
   updateUser,
   deleteUser,
-  getSalfaProfiles,
-  updateSalfaProfile,
+  getSalfaUsers,
+  createSalfaUser,
 } from '../api'
 import { useToast } from '../hooks/useToast'
 import { useFetch } from '../hooks/useFetch'
 import { formatIQD } from '../utils/formatters'
+import { getApiError } from '../utils/apiError'
 import Card from '../components/ui/Card'
 import Button from '../components/ui/Button'
 import Input, { Select } from '../components/ui/Input'
@@ -19,100 +20,107 @@ import DataTable, { PageHeader } from '../components/ui/DataTable'
 import { TableSkeleton } from '../components/ui/LoadingSkeleton'
 import Modal, { ConfirmDialog } from '../components/ui/Modal'
 
-const emptyUserForm = { username: '', fullName: '', phoneNumber: '', password: '', role: 'Member' }
-const emptyProfileForm = { fullName: '', salaryAmount: '', usedCapacity: '', accountStatus: 'Active' }
+const emptyIdentityForm = {
+  username: '',
+  password: '',
+  newPassword: '',
+  currentPassword: '',
+  role: 'User',
+}
+
+const emptySalfaForm = {
+  username: '',
+  password: '',
+  fullName: '',
+  phoneNumber: '',
+  salaryAmount: '',
+}
 
 export default function UsersPage() {
   const [tab, setTab] = useState('users')
-  const [userModal, setUserModal] = useState(null)
-  const [profileModal, setProfileModal] = useState(null)
+  const [identityModal, setIdentityModal] = useState(null)
+  const [salfaModal, setSalfaModal] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState(null)
-  const [userForm, setUserForm] = useState(emptyUserForm)
-  const [profileForm, setProfileForm] = useState(emptyProfileForm)
+  const [identityForm, setIdentityForm] = useState(emptyIdentityForm)
+  const [salfaForm, setSalfaForm] = useState(emptySalfaForm)
   const [submitting, setSubmitting] = useState(false)
   const { toast } = useToast()
 
   const fetchUsersData = useCallback(async () => {
-    const [usersRes, profilesRes] = await Promise.all([getUsers(), getSalfaProfiles()])
+    const [usersRes, salfaRes] = await Promise.all([getUsers(), getSalfaUsers()])
     return {
-      users: Array.isArray(usersRes.data) ? usersRes.data : usersRes.data.items || [],
-      profiles: Array.isArray(profilesRes.data) ? profilesRes.data : profilesRes.data.items || [],
+      users: Array.isArray(usersRes.data) ? usersRes.data : [],
+      salfaUsers: Array.isArray(salfaRes.data) ? salfaRes.data : [],
     }
   }, [])
 
   const { data, loading, refetch } = useFetch(fetchUsersData)
   const users = data?.users || []
-  const profiles = data?.profiles || []
+  const salfaUsers = data?.salfaUsers || []
 
-  const openCreateUser = () => {
-    setUserForm(emptyUserForm)
-    setUserModal('create')
+  const openCreateIdentity = () => {
+    setIdentityForm(emptyIdentityForm)
+    setIdentityModal('create')
   }
 
-  const openEditUser = (user) => {
-    setUserForm({
+  const openEditIdentity = (user) => {
+    setIdentityForm({
       username: user.username,
-      fullName: user.fullName || '',
-      phoneNumber: user.phoneNumber || '',
       password: '',
-      role: user.role || 'Member',
+      newPassword: '',
+      currentPassword: '',
+      role: user.roles?.[0] || 'User',
     })
-    setUserModal({ type: 'edit', id: user.id })
+    setIdentityModal({ type: 'edit', id: user.id })
   }
 
-  const openEditProfile = (profile) => {
-    setProfileForm({
-      fullName: profile.fullName || '',
-      salaryAmount: profile.salaryAmount ?? '',
-      usedCapacity: profile.usedCapacity ?? '',
-      accountStatus: profile.accountStatus || 'Active',
-    })
-    setProfileModal({ id: profile.id })
-  }
-
-  const handleUserSubmit = async (e) => {
+  const handleIdentitySubmit = async (e) => {
     e.preventDefault()
     setSubmitting(true)
     try {
-      const payload = {
-        username: userForm.username,
-        fullName: userForm.fullName,
-        phoneNumber: userForm.phoneNumber,
-        role: userForm.role,
-      }
-      if (userForm.password) payload.password = userForm.password
-
-      if (userModal === 'create') {
-        await createUser(payload)
+      if (identityModal === 'create') {
+        await createUser({
+          username: identityForm.username,
+          password: identityForm.password,
+          role: identityForm.role,
+        })
         toast.success('تم إنشاء المستخدم')
       } else {
-        await updateUser(userModal.id, payload)
+        const payload = {}
+        if (identityForm.username) payload.username = identityForm.username
+        if (identityForm.newPassword) {
+          payload.currentPassword = identityForm.currentPassword
+          payload.newPassword = identityForm.newPassword
+        }
+        await updateUser(identityModal.id, payload)
         toast.success('تم تحديث المستخدم')
       }
-      setUserModal(null)
+      setIdentityModal(null)
       refetch()
     } catch (err) {
-      toast.error(err.response?.data?.message || 'فشل حفظ المستخدم')
+      toast.error(getApiError(err, 'فشل حفظ المستخدم'))
     } finally {
       setSubmitting(false)
     }
   }
 
-  const handleProfileSubmit = async (e) => {
+  const handleSalfaSubmit = async (e) => {
     e.preventDefault()
     setSubmitting(true)
     try {
-      await updateSalfaProfile(profileModal.id, {
-        fullName: profileForm.fullName,
-        salaryAmount: Number(profileForm.salaryAmount),
-        usedCapacity: Number(profileForm.usedCapacity),
-        accountStatus: profileForm.accountStatus,
+      await createSalfaUser({
+        username: salfaForm.username,
+        password: salfaForm.password,
+        fullName: salfaForm.fullName,
+        phoneNumber: salfaForm.phoneNumber,
+        salaryAmount: Number(salfaForm.salaryAmount),
       })
-      toast.success('تم تحديث الملف')
-      setProfileModal(null)
+      toast.success('تم إنشاء مستخدم سلفة')
+      setSalfaModal(false)
+      setSalfaForm(emptySalfaForm)
       refetch()
     } catch (err) {
-      toast.error(err.response?.data?.message || 'فشل تحديث الملف')
+      toast.error(getApiError(err, 'فشل إنشاء مستخدم سلفة'))
     } finally {
       setSubmitting(false)
     }
@@ -125,8 +133,8 @@ export default function UsersPage() {
       toast.success('تم حذف المستخدم')
       setDeleteTarget(null)
       refetch()
-    } catch {
-      toast.error('فشل حذف المستخدم')
+    } catch (err) {
+      toast.error(getApiError(err, 'فشل حذف المستخدم'))
     } finally {
       setSubmitting(false)
     }
@@ -139,19 +147,25 @@ export default function UsersPage() {
 
   const userColumns = [
     { key: 'username', header: 'اسم المستخدم' },
-    { key: 'fullName', header: 'الاسم الكامل' },
-    { key: 'phoneNumber', header: 'رقم الهاتف' },
     {
-      key: 'role',
+      key: 'roles',
       header: 'الدور',
-      render: (row) => <Badge variant="info">{row.role}</Badge>,
+      render: (row) => (
+        <div className="flex gap-1">
+          {(row.roles || []).map((role) => (
+            <Badge key={role} variant="info">
+              {role}
+            </Badge>
+          ))}
+        </div>
+      ),
     },
     {
       key: 'actions',
       header: 'إجراءات',
       render: (row) => (
         <div className="flex gap-1.5">
-          <Button variant="outline" size="sm" onClick={() => openEditUser(row)}>
+          <Button variant="outline" size="sm" onClick={() => openEditIdentity(row)}>
             تعديل
           </Button>
           <Button variant="danger" size="sm" onClick={() => setDeleteTarget(row)}>
@@ -162,17 +176,29 @@ export default function UsersPage() {
     },
   ]
 
-  const profileColumns = [
+  const salfaColumns = [
+    { key: 'username', header: 'اسم المستخدم' },
     { key: 'fullName', header: 'الاسم الكامل' },
+    { key: 'phoneNumber', header: 'رقم الهاتف' },
     {
       key: 'salaryAmount',
       header: 'الراتب',
       render: (row) => formatIQD(row.salaryAmount),
     },
     {
+      key: 'maxCapacity',
+      header: 'السعة القصوى',
+      render: (row) => formatIQD(row.maxCapacity),
+    },
+    {
       key: 'usedCapacity',
-      header: 'السعة المستخدمة',
+      header: 'المستخدمة',
       render: (row) => formatIQD(row.usedCapacity),
+    },
+    {
+      key: 'remainingCapacity',
+      header: 'المتبقية',
+      render: (row) => formatIQD(row.remainingCapacity),
     },
     {
       key: 'accountStatus',
@@ -180,13 +206,14 @@ export default function UsersPage() {
       render: (row) => accountBadge(row.accountStatus),
     },
     {
-      key: 'actions',
-      header: 'إجراءات',
-      render: (row) => (
-        <Button variant="outline" size="sm" onClick={() => openEditProfile(row)}>
-          تعديل
-        </Button>
-      ),
+      key: 'isRestricted',
+      header: 'مقيّد',
+      render: (row) =>
+        row.isRestricted ? (
+          <Badge variant="warning">{row.restrictionReason || 'نعم'}</Badge>
+        ) : (
+          <Badge variant="success">لا</Badge>
+        ),
     },
   ]
 
@@ -194,18 +221,20 @@ export default function UsersPage() {
     <>
       <PageHeader
         title="المستخدمون وملفات سلفة"
-        subtitle="إدارة حسابات المستخدمين وملفات الادخار"
+        subtitle="إدارة حسابات الدخول وملفات سلفة"
         action={
           tab === 'users' ? (
-            <Button onClick={openCreateUser}>إضافة مستخدم</Button>
-          ) : null
+            <Button onClick={openCreateIdentity}>إضافة مستخدم</Button>
+          ) : (
+            <Button onClick={() => setSalfaModal(true)}>إضافة مستخدم سلفة</Button>
+          )
         }
       />
 
       <div className="flex gap-2 mb-6">
         {[
-          { key: 'users', label: 'المستخدمون' },
-          { key: 'profiles', label: 'ملفات سلفة' },
+          { key: 'users', label: 'حسابات الدخول' },
+          { key: 'salfa', label: 'ملفات سلفة' },
         ].map(({ key, label }) => (
           <button
             key={key}
@@ -226,53 +255,60 @@ export default function UsersPage() {
           <TableSkeleton cols={5} />
         ) : (
           <DataTable
-            columns={tab === 'users' ? userColumns : profileColumns}
-            data={tab === 'users' ? users : profiles}
+            columns={tab === 'users' ? userColumns : salfaColumns}
+            data={tab === 'users' ? users : salfaUsers}
           />
         )}
       </Card>
 
       <Modal
-        open={!!userModal}
-        onClose={() => setUserModal(null)}
-        title={userModal === 'create' ? 'إضافة مستخدم' : 'تعديل مستخدم'}
+        open={!!identityModal}
+        onClose={() => setIdentityModal(null)}
+        title={identityModal === 'create' ? 'إضافة مستخدم' : 'تعديل مستخدم'}
       >
-        <form onSubmit={handleUserSubmit} className="space-y-4">
+        <form onSubmit={handleIdentitySubmit} className="space-y-4">
           <Input
             label="اسم المستخدم"
-            value={userForm.username}
-            onChange={(e) => setUserForm({ ...userForm, username: e.target.value })}
-            required
-            disabled={userModal !== 'create'}
-          />
-          <Input
-            label="الاسم الكامل"
-            value={userForm.fullName}
-            onChange={(e) => setUserForm({ ...userForm, fullName: e.target.value })}
+            value={identityForm.username}
+            onChange={(e) => setIdentityForm({ ...identityForm, username: e.target.value })}
             required
           />
-          <Input
-            label="رقم الهاتف"
-            value={userForm.phoneNumber}
-            onChange={(e) => setUserForm({ ...userForm, phoneNumber: e.target.value })}
-          />
-          <Input
-            label={userModal === 'create' ? 'كلمة المرور' : 'كلمة المرور (اتركها فارغة للإبقاء)'}
-            type="password"
-            value={userForm.password}
-            onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
-            required={userModal === 'create'}
-          />
-          <Select
-            label="الدور"
-            value={userForm.role}
-            onChange={(e) => setUserForm({ ...userForm, role: e.target.value })}
-          >
-            <option value="Member">عضو</option>
-            <option value="Admin">مدير</option>
-          </Select>
+          {identityModal === 'create' ? (
+            <>
+              <Input
+                label="كلمة المرور"
+                type="password"
+                value={identityForm.password}
+                onChange={(e) => setIdentityForm({ ...identityForm, password: e.target.value })}
+                required
+              />
+              <Select
+                label="الدور"
+                value={identityForm.role}
+                onChange={(e) => setIdentityForm({ ...identityForm, role: e.target.value })}
+              >
+                <option value="User">User</option>
+                <option value="Admin">Admin</option>
+              </Select>
+            </>
+          ) : (
+            <>
+              <Input
+                label="كلمة المرور الحالية"
+                type="password"
+                value={identityForm.currentPassword}
+                onChange={(e) => setIdentityForm({ ...identityForm, currentPassword: e.target.value })}
+              />
+              <Input
+                label="كلمة المرور الجديدة"
+                type="password"
+                value={identityForm.newPassword}
+                onChange={(e) => setIdentityForm({ ...identityForm, newPassword: e.target.value })}
+              />
+            </>
+          )}
           <div className="flex gap-3 justify-end pt-2">
-            <Button variant="secondary" type="button" onClick={() => setUserModal(null)}>
+            <Button variant="secondary" type="button" onClick={() => setIdentityModal(null)}>
               إلغاء
             </Button>
             <Button type="submit" loading={submitting}>
@@ -283,43 +319,49 @@ export default function UsersPage() {
       </Modal>
 
       <Modal
-        open={!!profileModal}
-        onClose={() => setProfileModal(null)}
-        title="تعديل ملف سلفة"
+        open={salfaModal}
+        onClose={() => setSalfaModal(false)}
+        title="إضافة مستخدم سلفة"
       >
-        <form onSubmit={handleProfileSubmit} className="space-y-4">
+        <form onSubmit={handleSalfaSubmit} className="space-y-4">
+          <Input
+            label="اسم المستخدم"
+            value={salfaForm.username}
+            onChange={(e) => setSalfaForm({ ...salfaForm, username: e.target.value })}
+            required
+          />
+          <Input
+            label="كلمة المرور"
+            type="password"
+            value={salfaForm.password}
+            onChange={(e) => setSalfaForm({ ...salfaForm, password: e.target.value })}
+            required
+          />
           <Input
             label="الاسم الكامل"
-            value={profileForm.fullName}
-            onChange={(e) => setProfileForm({ ...profileForm, fullName: e.target.value })}
+            value={salfaForm.fullName}
+            onChange={(e) => setSalfaForm({ ...salfaForm, fullName: e.target.value })}
+            required
+          />
+          <Input
+            label="رقم الهاتف"
+            value={salfaForm.phoneNumber}
+            onChange={(e) => setSalfaForm({ ...salfaForm, phoneNumber: e.target.value })}
+            required
           />
           <Input
             label="الراتب (د.ع)"
             type="number"
-            value={profileForm.salaryAmount}
-            onChange={(e) => setProfileForm({ ...profileForm, salaryAmount: e.target.value })}
+            value={salfaForm.salaryAmount}
+            onChange={(e) => setSalfaForm({ ...salfaForm, salaryAmount: e.target.value })}
+            required
           />
-          <Input
-            label="السعة المستخدمة (د.ع)"
-            type="number"
-            value={profileForm.usedCapacity}
-            onChange={(e) => setProfileForm({ ...profileForm, usedCapacity: e.target.value })}
-          />
-          <Select
-            label="حالة الحساب"
-            value={profileForm.accountStatus}
-            onChange={(e) => setProfileForm({ ...profileForm, accountStatus: e.target.value })}
-          >
-            <option value="Active">نشط</option>
-            <option value="Restricted">مقيّد</option>
-            <option value="Suspended">موقوف</option>
-          </Select>
           <div className="flex gap-3 justify-end pt-2">
-            <Button variant="secondary" type="button" onClick={() => setProfileModal(null)}>
+            <Button variant="secondary" type="button" onClick={() => setSalfaModal(false)}>
               إلغاء
             </Button>
             <Button type="submit" loading={submitting}>
-              حفظ
+              إنشاء
             </Button>
           </div>
         </form>

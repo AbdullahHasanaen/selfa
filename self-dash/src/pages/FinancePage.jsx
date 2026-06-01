@@ -17,7 +17,7 @@ export default function FinancePage() {
       getFinanceSummary(),
     ])
     return {
-      revenue: Array.isArray(revenueRes.data) ? revenueRes.data : revenueRes.data.items || [],
+      revenue: Array.isArray(revenueRes.data) ? revenueRes.data : [],
       summary: summaryRes.data,
     }
   }, [])
@@ -30,29 +30,26 @@ export default function FinancePage() {
 
   const columns = [
     {
-      key: 'date',
-      header: 'التاريخ',
-      render: (row) => formatDate(row.date || row.createdAt),
+      key: 'recordedAt',
+      header: 'تاريخ التسجيل',
+      render: (row) => formatDate(row.recordedAt),
     },
     {
-      key: 'groupId',
-      header: 'المجموعة',
-      render: (row) => `#${row.groupId}`,
+      key: 'periodMonth',
+      header: 'الشهر',
+      render: (row) => formatDate(row.periodMonth),
     },
     {
-      key: 'memberName',
-      header: 'العضو',
-      render: (row) => row.memberName || '—',
+      key: 'paymentScheduleId',
+      header: 'معرّف الدفعة',
+      render: (row) => (
+        <span className="font-mono text-xs">{row.paymentScheduleId?.slice(0, 8) ?? '—'}…</span>
+      ),
     },
     {
-      key: 'installmentAmount',
-      header: 'مبلغ القسط',
-      render: (row) => formatIQD(row.installmentAmount),
-    },
-    {
-      key: 'feeAmount',
+      key: 'amount',
       header: 'العمولة (1%)',
-      render: (row) => formatIQD(row.feeAmount),
+      render: (row) => formatIQD(row.amount),
     },
   ]
 
@@ -64,25 +61,25 @@ export default function FinancePage() {
   const stats = [
     {
       label: 'إجمالي الإيرادات',
-      value: formatIQD(summary?.totalRevenue),
+      value: formatIQD(summary?.totalRevenueAllTime),
       icon: IconRevenue,
       accent: 'accent',
     },
     {
-      label: 'الأقساط المعالجة',
-      value: summary?.totalInstallmentsProcessed?.toLocaleString('ar-IQ') ?? '—',
+      label: 'إيرادات هذا الشهر',
+      value: formatIQD(summary?.revenueThisMonth),
       icon: IconRevenue,
       accent: 'blue',
     },
     {
       label: 'المجموعات النشطة',
-      value: summary?.totalActiveGroups?.toLocaleString('ar-IQ') ?? '—',
+      value: summary?.activeGroupsCount?.toLocaleString('ar-IQ') ?? '—',
       icon: IconGroups2,
       accent: 'purple',
     },
     {
-      label: 'إجمالي الأعضاء',
-      value: summary?.totalMembers?.toLocaleString('ar-IQ') ?? '—',
+      label: 'إجمالي الأعضاء النشطين',
+      value: summary?.totalMembersActive?.toLocaleString('ar-IQ') ?? '—',
       icon: IconMembers,
       accent: 'blue',
     },
@@ -93,8 +90,8 @@ export default function FinancePage() {
       accent: 'accent',
     },
     {
-      label: 'حالات التعثر',
-      value: summary?.totalDefaults?.toLocaleString('ar-IQ') ?? '—',
+      label: 'حالات التعثر المفتوحة',
+      value: summary?.openDefaultCasesCount?.toLocaleString('ar-IQ') ?? '—',
       icon: IconAlert,
       accent: 'red',
     },

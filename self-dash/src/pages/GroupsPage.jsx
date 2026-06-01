@@ -12,7 +12,8 @@ import {
 } from '../api'
 import { useToast } from '../hooks/useToast'
 import { useFetch } from '../hooks/useFetch'
-import { formatIQD, formatDateTime } from '../utils/formatters'
+import { formatIQD, formatDateTime, formatDate } from '../utils/formatters'
+import { getApiError } from '../utils/apiError'
 import Card from '../components/ui/Card'
 import Button from '../components/ui/Button'
 import Badge from '../components/ui/Badge'
@@ -35,8 +36,8 @@ export default function GroupsPage() {
   const fetchGroupsData = useCallback(async () => {
     const [groupsRes, templatesRes] = await Promise.all([getGroups(), getGroupTemplates()])
     return {
-      groups: Array.isArray(groupsRes.data) ? groupsRes.data : groupsRes.data.items || [],
-      templates: Array.isArray(templatesRes.data) ? templatesRes.data : templatesRes.data.items || [],
+      groups: Array.isArray(groupsRes.data) ? groupsRes.data : [],
+      templates: Array.isArray(templatesRes.data) ? templatesRes.data : [],
     }
   }, [])
 
@@ -49,13 +50,13 @@ export default function GroupsPage() {
     if (!selectedTemplate) return
     setSubmitting(true)
     try {
-      await createGroup({ templateId: Number(selectedTemplate) })
+      await createGroup({ groupTemplateId: Number(selectedTemplate) })
       toast.success('تم إنشاء المجموعة بنجاح')
       setShowCreate(false)
       setSelectedTemplate('')
       refetch()
     } catch (err) {
-      toast.error(err.response?.data?.message || 'فشل إنشاء المجموعة')
+      toast.error(getApiError(err, 'فشل إنشاء المجموعة'))
     } finally {
       setSubmitting(false)
     }
@@ -77,7 +78,7 @@ export default function GroupsPage() {
       setConfirmAction(null)
       refetch()
     } catch (err) {
-      toast.error(err.response?.data?.message || 'فشل تنفيذ الإجراء')
+      toast.error(getApiError(err, 'فشل تنفيذ الإجراء'))
     } finally {
       setSubmitting(false)
     }
@@ -89,8 +90,9 @@ export default function GroupsPage() {
     try {
       const { data: lottery } = await getLotteryVerification(group.id)
       setLotteryData({ group, ...lottery })
-    } catch {
-      toast.error('فشل تحميل بيانات القرعة')
+    } catch (err) {
+      toast.error(getApiError(err, 'فشل تحميل بيانات القرعة'))
+      setLotteryData(null)
     } finally {
       setModalLoading(false)
     }
@@ -102,8 +104,9 @@ export default function GroupsPage() {
     try {
       const { data: payments } = await getPaymentsMatrix(group.id)
       setPaymentsData({ group, ...payments })
-    } catch {
-      toast.error('فشل تحميل مصفوفة الدفعات')
+    } catch (err) {
+      toast.error(getApiError(err, 'فشل تحميل مصفوفة الدفعات'))
+      setPaymentsData(null)
     } finally {
       setModalLoading(false)
     }
@@ -115,26 +118,31 @@ export default function GroupsPage() {
   }
 
   const columns = [
-    { key: 'id', header: 'المعرّف', render: (row) => `#${row.id}` },
     {
-      key: 'templateName',
-      header: 'القالب',
-      render: (row) => row.templateName || row.template?.name || '—',
+      key: 'groupNumber',
+      header: 'رقم المجموعة',
+      render: (row) => `#${row.groupNumber ?? '—'}`,
     },
     {
-      key: 'totalAmount',
-      header: 'المبلغ',
-      render: (row) => formatIQD(row.totalAmount),
+      key: 'template',
+      header: 'القالب',
+      render: (row) =>
+        row.template ? `${formatIQD(row.template.totalAmount)} / ${row.template.durationMonths} شهر` : '—',
     },
     {
       key: 'members',
       header: 'الأعضاء',
-      render: (row) => `${row.currentMembers ?? row.members?.length ?? 0}/${row.memberCapacity ?? '—'}`,
+      render: (row) => `${row.currentMemberCount ?? 0}/${row.memberCapacity ?? '—'}`,
     },
     {
       key: 'status',
       header: 'الحالة',
       render: (row) => statusBadge(row.status),
+    },
+    {
+      key: 'createdAt',
+      header: 'تاريخ الإنشاء',
+      render: (row) => formatDateTime(row.createdAt),
     },
     {
       key: 'actions',
@@ -234,7 +242,7 @@ export default function GroupsPage() {
       <Modal
         open={!!lotteryData}
         onClose={() => setLotteryData(null)}
-        title={`التحقق من القرعة — مجموعة #${lotteryData?.group?.id}`}
+        title={`التحقق من القرعة — مجموعة #${lotteryData?.groupNumber ?? lotteryData?.group?.groupNumber ?? '—'}`}
         size="md"
       >
         {modalLoading ? (
@@ -242,27 +250,40 @@ export default function GroupsPage() {
         ) : (
           <div className="space-y-4">
             <div>
-              <p className="text-xs text-slate-500 mb-1">Hash</p>
+              <p className="text-xs text-slate-500 mb-1">Lottery Hash</p>
               <code className="block p-3 bg-surface-900 rounded-lg text-xs text-accent-400 break-all font-mono">
-                {lotteryData?.hash || '—'}
+                {lotteryData?.lotteryHash || '—'}
               </code>
             </div>
             <div>
-              <p className="text-xs text-slate-500 mb-1">Seed</p>
+              <p className="text-xs text-slate-500 mb-1">Random Seed</p>
               <code className="block p-3 bg-surface-900 rounded-lg text-xs text-slate-300 break-all font-mono">
-                {lotteryData?.seed || '—'}
+                {lotteryData?.randomSeed || '—'}
               </code>
             </div>
-            {lotteryData?.winnerName && (
-              <div>
-                <p className="text-xs text-slate-500 mb-1">الفائز</p>
-                <p className="text-slate-200">{lotteryData.winnerName}</p>
-              </div>
-            )}
-            {lotteryData?.drawnAt && (
+            {lotteryData?.ranAt && (
               <div>
                 <p className="text-xs text-slate-500 mb-1">تاريخ القرعة</p>
-                <p className="text-slate-200">{formatDateTime(lotteryData.drawnAt)}</p>
+                <p className="text-slate-200">{formatDateTime(lotteryData.ranAt)}</p>
+              </div>
+            )}
+            {lotteryData?.confirmationDeadline && (
+              <div>
+                <p className="text-xs text-slate-500 mb-1">موعد انتهاء التأكيد</p>
+                <p className="text-slate-200">{formatDateTime(lotteryData.confirmationDeadline)}</p>
+              </div>
+            )}
+            {lotteryData?.positions?.length > 0 && (
+              <div>
+                <p className="text-xs text-slate-500 mb-2">الترتيب</p>
+                <div className="space-y-1">
+                  {lotteryData.positions.map((p) => (
+                    <div key={p.position} className="flex justify-between text-sm text-slate-300 p-2 bg-surface-900 rounded">
+                      <span>المركز {p.position}</span>
+                      <span className="font-mono text-xs text-slate-500">{p.membershipId?.slice(0, 8)}…</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>
@@ -272,7 +293,7 @@ export default function GroupsPage() {
       <Modal
         open={!!paymentsData}
         onClose={() => setPaymentsData(null)}
-        title={`مصفوفة الدفعات — مجموعة #${paymentsData?.group?.id}`}
+        title={`مصفوفة الدفعات — مجموعة #${paymentsData?.group?.groupNumber ?? '—'}`}
         size="full"
       >
         {modalLoading ? (
@@ -286,12 +307,13 @@ export default function GroupsPage() {
 }
 
 function PaymentsMatrix({ data }) {
-  const members = data?.members || data?.rows || []
-  const months = data?.months || data?.monthLabels || []
+  const members = data?.members || []
 
   if (!members.length) {
     return <p className="text-center text-slate-500 py-8">لا توجد بيانات دفعات</p>
   }
+
+  const monthLabels = members[0]?.payments?.map((p) => formatDate(p.dueMonth)) || []
 
   return (
     <div className="overflow-x-auto">
@@ -299,22 +321,23 @@ function PaymentsMatrix({ data }) {
         <thead>
           <tr className="border-b border-surface-700">
             <th className="px-3 py-2 text-right text-slate-400 sticky right-0 bg-surface-800">العضو</th>
-            {months.map((m, i) => (
+            <th className="px-2 py-2 text-center text-slate-400">المركز</th>
+            {monthLabels.map((m, i) => (
               <th key={i} className="px-2 py-2 text-center text-slate-400 whitespace-nowrap">
-                {typeof m === 'object' ? m.label || `ش${m.month}` : m}
+                {m}
               </th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {members.map((member, ri) => (
-            <tr key={member.id || ri} className="border-b border-surface-700/50">
+          {members.map((member) => (
+            <tr key={member.membershipId} className="border-b border-surface-700/50">
               <td className="px-3 py-2 text-slate-300 sticky right-0 bg-surface-800 whitespace-nowrap">
-                {member.fullName || member.name}
+                {member.memberName}
               </td>
-              {(member.payments || member.months || []).map((payment, ci) => {
-                const status = typeof payment === 'string' ? payment : payment?.status
-                const cfg = PAYMENT_STATUS[status] || { label: status, color: 'bg-slate-600' }
+              <td className="px-2 py-2 text-center text-slate-400">{member.lotteryPosition}</td>
+              {(member.payments || []).map((payment, ci) => {
+                const cfg = PAYMENT_STATUS[payment.status] || { label: payment.status, color: 'bg-slate-600' }
                 return (
                   <td key={ci} className="px-1 py-2 text-center">
                     <span

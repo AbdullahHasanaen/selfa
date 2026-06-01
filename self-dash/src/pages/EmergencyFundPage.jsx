@@ -1,13 +1,13 @@
 import { useState, useCallback, useEffect } from 'react'
 import {
-  getEmergencyFund,
+  getEmergencyFundBalance,
   getEmergencyFundTransactions,
-  depositEmergencyFund,
-  withdrawEmergencyFund,
+  createEmergencyFundTransaction,
 } from '../api'
 import { useToast } from '../hooks/useToast'
 import { useFetch } from '../hooks/useFetch'
 import { formatIQD, formatDateTime } from '../utils/formatters'
+import { getApiError } from '../utils/apiError'
 import Card, { StatCard } from '../components/ui/Card'
 import Button from '../components/ui/Button'
 import Input, { Textarea } from '../components/ui/Input'
@@ -20,18 +20,19 @@ import { IconFund } from '../components/icons'
 
 export default function EmergencyFundPage() {
   const [showForm, setShowForm] = useState(null)
-  const [form, setForm] = useState({ amount: '', note: '' })
+  const [form, setForm] = useState({ amount: '', notes: '' })
   const [submitting, setSubmitting] = useState(false)
   const { toast } = useToast()
 
   const fetchFund = useCallback(async () => {
-    const [fundRes, txRes] = await Promise.all([
-      getEmergencyFund(),
+    const [balanceRes, txRes] = await Promise.all([
+      getEmergencyFundBalance(),
       getEmergencyFundTransactions(),
     ])
-    const balance = fundRes.data.balance ?? fundRes.data.currentBalance ?? fundRes.data
-    const transactions = Array.isArray(txRes.data) ? txRes.data : txRes.data.items || []
-    return { balance, transactions }
+    return {
+      balance: balanceRes.data,
+      transactions: Array.isArray(txRes.data) ? txRes.data : [],
+    }
   }, [])
 
   const { data, loading, refetch, error } = useFetch(fetchFund)
@@ -44,19 +45,17 @@ export default function EmergencyFundPage() {
     e.preventDefault()
     setSubmitting(true)
     try {
-      const amount = Number(form.amount)
-      if (showForm === 'deposit') {
-        await depositEmergencyFund(amount, form.note)
-        toast.success('تم الإيداع بنجاح')
-      } else {
-        await withdrawEmergencyFund(amount, form.note)
-        toast.success('تم السحب بنجاح')
-      }
+      await createEmergencyFundTransaction({
+        type: showForm === 'deposit' ? 'Contribution' : 'Disbursement',
+        amount: Number(form.amount),
+        notes: form.notes || undefined,
+      })
+      toast.success(showForm === 'deposit' ? 'تم الإيداع بنجاح' : 'تم السحب بنجاح')
       setShowForm(null)
-      setForm({ amount: '', note: '' })
+      setForm({ amount: '', notes: '' })
       refetch()
     } catch (err) {
-      toast.error(err.response?.data?.message || 'فشل العملية')
+      toast.error(getApiError(err, 'فشل العملية'))
     } finally {
       setSubmitting(false)
     }
@@ -77,27 +76,27 @@ export default function EmergencyFundPage() {
       key: 'amount',
       header: 'المبلغ',
       render: (row) => (
-        <span className={row.type === 'ManualWithdrawal' || row.type === 'UsedForDefault' ? 'text-red-400' : 'text-emerald-400'}>
-          {row.type === 'ManualWithdrawal' || row.type === 'UsedForDefault' ? '−' : '+'}
+        <span className={row.type === 'Disbursement' ? 'text-red-400' : 'text-emerald-400'}>
+          {row.type === 'Disbursement' ? '−' : '+'}
           {formatIQD(row.amount)}
         </span>
       ),
     },
     {
-      key: 'note',
+      key: 'notes',
       header: 'ملاحظة',
-      render: (row) => row.note || '—',
+      render: (row) => row.notes || '—',
     },
     {
-      key: 'createdAt',
+      key: 'occurredAt',
       header: 'التاريخ',
-      render: (row) => formatDateTime(row.createdAt || row.date),
+      render: (row) => formatDateTime(row.occurredAt),
     },
   ]
 
   if (loading) return <PageSkeleton />
 
-  const balanceValue = typeof data?.balance === 'object' ? data.balance.balance : data?.balance
+  const balance = data?.balance
 
   return (
     <>
@@ -116,12 +115,24 @@ export default function EmergencyFundPage() {
         }
       />
 
-      <div className="mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <StatCard
           label="الرصيد الحالي"
-          value={formatIQD(balanceValue)}
+          value={formatIQD(balance?.currentBalance)}
           icon={IconFund}
           accent="accent"
+        />
+        <StatCard
+          label="إجمالي المساهمات"
+          value={formatIQD(balance?.totalContributions)}
+          icon={IconFund}
+          accent="blue"
+        />
+        <StatCard
+          label="إجمالي الصرف"
+          value={formatIQD(balance?.totalDisbursements)}
+          icon={IconFund}
+          accent="purple"
         />
       </div>
 
@@ -145,8 +156,8 @@ export default function EmergencyFundPage() {
           />
           <Textarea
             label="ملاحظة"
-            value={form.note}
-            onChange={(e) => setForm({ ...form, note: e.target.value })}
+            value={form.notes}
+            onChange={(e) => setForm({ ...form, notes: e.target.value })}
             placeholder="سبب العملية..."
           />
           <div className="flex gap-3 justify-end pt-2">

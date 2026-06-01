@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react'
 import { getUser, setAuth, clearAuth, isAuthenticated } from '../utils/auth'
 import { login as loginApi } from '../api'
+import { getApiError } from '../utils/apiError'
 import { AuthContext } from './auth-context'
 
 export function AuthProvider({ children }) {
@@ -20,8 +21,16 @@ export function AuthProvider({ children }) {
       setUser(userData)
       return { success: true }
     } catch (err) {
-      const message =
-        err.response?.data?.message || err.response?.data?.error || 'فشل تسجيل الدخول'
+      let message = getApiError(err, '')
+      if (!message) {
+        if (err.code === 'ECONNABORTED') {
+          message = 'انتهت مهلة الاتصال — الخادم قد يكون في وضع السكون، حاول مرة أخرى'
+        } else if (err.code === 'ERR_NETWORK') {
+          message = 'تعذر الاتصال بالخادم — تحقق من الإنترنت أو أعد المحاولة'
+        } else {
+          message = 'فشل تسجيل الدخول'
+        }
+      }
       return { success: false, message }
     } finally {
       setLoading(false)

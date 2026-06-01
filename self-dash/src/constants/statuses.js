@@ -26,13 +26,11 @@ export const PAYMENT_STATUS = {
 
 export const ACCOUNT_STATUS = {
   Active: { label: 'نشط', variant: 'success' },
-  Restricted: { label: 'مقيّد', variant: 'warning' },
   Suspended: { label: 'موقوف', variant: 'danger' },
+  Inactive: { label: 'غير نشط', variant: 'default' },
 }
 
 export const FUND_TX_TYPE = {
-  AutoContribution: { label: 'مساهمة تلقائية', variant: 'info' },
-  ManualDeposit: { label: 'إيداع يدوي', variant: 'success' },
-  ManualWithdrawal: { label: 'سحب يدوي', variant: 'warning' },
-  UsedForDefault: { label: 'استخدام للتعثر', variant: 'danger' },
+  Contribution: { label: 'مساهمة', variant: 'success' },
+  Disbursement: { label: 'صرف', variant: 'warning' },
 }

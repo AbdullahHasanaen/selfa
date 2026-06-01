@@ -2,7 +2,8 @@ import { useState, useCallback, useEffect } from 'react'
 import { getDefaults, resolveDefault, escalateDefault, addDefaultAction } from '../api'
 import { useToast } from '../hooks/useToast'
 import { useFetch } from '../hooks/useFetch'
-import { formatIQD, formatDateTime } from '../utils/formatters'
+import { formatIQD, formatDateTime, formatDate } from '../utils/formatters'
+import { getApiError } from '../utils/apiError'
 import Card from '../components/ui/Card'
 import Button from '../components/ui/Button'
 import Badge from '../components/ui/Badge'
@@ -15,20 +16,29 @@ import { Select, Textarea } from '../components/ui/Input'
 const RESOLUTIONS = [
   { value: 'EmergencyFund', label: 'صندوق الطوارئ' },
   { value: 'ManualCollection', label: 'تحصيل يدوي' },
-  { value: 'Waived', label: 'إعفاء' },
+  { value: 'WrittenOff', label: 'شطب الدين' },
+]
+
+const ACTION_TYPES = [
+  { value: 'ContactAttempted', label: 'محاولة تواصل' },
+  { value: 'PaymentReminder', label: 'تذكير بالدفع' },
+  { value: 'FollowUp', label: 'متابعة' },
+  { value: 'Note', label: 'ملاحظة' },
 ]
 
 export default function DefaultsPage() {
   const [resolveModal, setResolveModal] = useState(null)
   const [noteModal, setNoteModal] = useState(null)
   const [resolution, setResolution] = useState('EmergencyFund')
-  const [note, setNote] = useState('')
+  const [adminNotes, setAdminNotes] = useState('')
+  const [action, setAction] = useState('ContactAttempted')
+  const [notes, setNotes] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const { toast } = useToast()
 
   const fetchDefaults = useCallback(async () => {
     const { data } = await getDefaults()
-    return Array.isArray(data) ? data : data.items || []
+    return Array.isArray(data) ? data : []
   }, [])
 
   const { data: defaults = [], loading, refetch, error } = useFetch(fetchDefaults)
@@ -40,12 +50,16 @@ export default function DefaultsPage() {
   const handleResolve = async () => {
     setSubmitting(true)
     try {
-      await resolveDefault(resolveModal.id, resolution)
+      await resolveDefault(resolveModal.id, {
+        resolution,
+        adminNotes: adminNotes || undefined,
+      })
       toast.success('تم حل حالة التعثر')
       setResolveModal(null)
+      setAdminNotes('')
       refetch()
     } catch (err) {
-      toast.error(err.response?.data?.message || 'فشل حل حالة التعثر')
+      toast.error(getApiError(err, 'فشل حل حالة التعثر'))
     } finally {
       setSubmitting(false)
     }
@@ -56,8 +70,8 @@ export default function DefaultsPage() {
       await escalateDefault(item.id)
       toast.success('تم تصعيد حالة التعثر')
       refetch()
-    } catch {
-      toast.error('فشل تصعيد حالة التعثر')
+    } catch (err) {
+      toast.error(getApiError(err, 'فشل تصعيد حالة التعثر'))
     }
   }
 
@@ -65,13 +79,13 @@ export default function DefaultsPage() {
     e.preventDefault()
     setSubmitting(true)
     try {
-      await addDefaultAction(noteModal.id, { note, actionType: 'Note' })
-      toast.success('تم إضافة الملاحظة')
+      await addDefaultAction(noteModal.id, { action, notes })
+      toast.success('تم إضافة الإجراء')
       setNoteModal(null)
-      setNote('')
+      setNotes('')
       refetch()
-    } catch {
-      toast.error('فشل إضافة الملاحظة')
+    } catch (err) {
+      toast.error(getApiError(err, 'فشل إضافة الإجراء'))
     } finally {
       setSubmitting(false)
     }
@@ -90,12 +104,12 @@ export default function DefaultsPage() {
     {
       key: 'memberName',
       header: 'اسم العضو',
-      render: (row) => row.memberName || row.member?.fullName || '—',
+      render: (row) => row.memberName || '—',
     },
     {
-      key: 'groupName',
-      header: 'المجموعة',
-      render: (row) => row.groupName || (row.groupId ? `#${row.groupId}` : '—'),
+      key: 'failedMonth',
+      header: 'شهر التعثر',
+      render: (row) => formatDate(row.failedMonth),
     },
     {
       key: 'amount',
@@ -108,9 +122,9 @@ export default function DefaultsPage() {
       render: (row) => statusBadge(row.status),
     },
     {
-      key: 'attempts',
-      header: 'المحاولات',
-      render: (row) => row.attempts ?? 0,
+      key: 'detectedAt',
+      header: 'تاريخ الاكتشاف',
+      render: (row) => formatDateTime(row.detectedAt),
     },
     {
       key: 'actions',
@@ -125,6 +139,7 @@ export default function DefaultsPage() {
                 size="sm"
                 onClick={() => {
                   setResolution('EmergencyFund')
+                  setAdminNotes('')
                   setResolveModal(row)
                 }}
               >
@@ -138,7 +153,7 @@ export default function DefaultsPage() {
             </>
           )}
           <Button variant="ghost" size="sm" onClick={() => setNoteModal(row)}>
-            ملاحظة
+            إجراء
           </Button>
         </div>
       ),
@@ -179,6 +194,12 @@ export default function DefaultsPage() {
               </option>
             ))}
           </Select>
+          <Textarea
+            label="ملاحظات الإدارة"
+            value={adminNotes}
+            onChange={(e) => setAdminNotes(e.target.value)}
+            placeholder="ملاحظات اختيارية..."
+          />
           <div className="flex gap-3 justify-end pt-2">
             <Button variant="secondary" onClick={() => setResolveModal(null)}>
               إلغاء
@@ -193,24 +214,36 @@ export default function DefaultsPage() {
       <Modal
         open={!!noteModal}
         onClose={() => setNoteModal(null)}
-        title="إضافة ملاحظة / إجراء"
+        title="إضافة إجراء"
       >
         <form onSubmit={handleAddNote} className="space-y-4">
-          {noteModal?.actions?.length > 0 && (
+          {noteModal?.actionLog?.length > 0 && (
             <div className="space-y-2 max-h-40 overflow-y-auto">
               <p className="text-xs text-slate-500">السجل السابق</p>
-              {noteModal.actions.map((a, i) => (
+              {noteModal.actionLog.map((a, i) => (
                 <div key={i} className="p-2 bg-surface-900 rounded-lg text-xs">
-                  <p className="text-slate-300">{a.note || a.description}</p>
-                  <p className="text-slate-500 mt-1">{formatDateTime(a.createdAt)}</p>
+                  <p className="text-slate-400">{a.action}</p>
+                  <p className="text-slate-300">{a.notes}</p>
+                  <p className="text-slate-500 mt-1">{formatDateTime(a.timestamp)}</p>
                 </div>
               ))}
             </div>
           )}
+          <Select
+            label="نوع الإجراء"
+            value={action}
+            onChange={(e) => setAction(e.target.value)}
+          >
+            {ACTION_TYPES.map((a) => (
+              <option key={a.value} value={a.value}>
+                {a.label}
+              </option>
+            ))}
+          </Select>
           <Textarea
-            label="الملاحظة"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
+            label="الملاحظات"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
             placeholder="اكتب ملاحظتك هنا..."
             required
           />
