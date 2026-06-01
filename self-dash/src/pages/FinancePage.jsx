@@ -1,0 +1,121 @@
+import { useCallback, useEffect } from 'react'
+import { getRevenueLog, getFinanceSummary } from '../api'
+import { useToast } from '../hooks/useToast'
+import { useFetch } from '../hooks/useFetch'
+import { formatIQD, formatDate } from '../utils/formatters'
+import Card, { StatCard } from '../components/ui/Card'
+import DataTable, { PageHeader } from '../components/ui/DataTable'
+import { PageSkeleton } from '../components/ui/LoadingSkeleton'
+import { IconRevenue, IconGroups2, IconMembers, IconFund, IconAlert } from '../components/icons'
+
+export default function FinancePage() {
+  const { toast } = useToast()
+
+  const fetchFinance = useCallback(async () => {
+    const [revenueRes, summaryRes] = await Promise.all([
+      getRevenueLog(),
+      getFinanceSummary(),
+    ])
+    return {
+      revenue: Array.isArray(revenueRes.data) ? revenueRes.data : revenueRes.data.items || [],
+      summary: summaryRes.data,
+    }
+  }, [])
+
+  const { data, loading, error } = useFetch(fetchFinance)
+
+  useEffect(() => {
+    if (error) toast.error('فشل تحميل البيانات المالية')
+  }, [error, toast])
+
+  const columns = [
+    {
+      key: 'date',
+      header: 'التاريخ',
+      render: (row) => formatDate(row.date || row.createdAt),
+    },
+    {
+      key: 'groupId',
+      header: 'المجموعة',
+      render: (row) => `#${row.groupId}`,
+    },
+    {
+      key: 'memberName',
+      header: 'العضو',
+      render: (row) => row.memberName || '—',
+    },
+    {
+      key: 'installmentAmount',
+      header: 'مبلغ القسط',
+      render: (row) => formatIQD(row.installmentAmount),
+    },
+    {
+      key: 'feeAmount',
+      header: 'العمولة (1%)',
+      render: (row) => formatIQD(row.feeAmount),
+    },
+  ]
+
+  if (loading) return <PageSkeleton />
+
+  const summary = data?.summary
+  const revenue = data?.revenue || []
+
+  const stats = [
+    {
+      label: 'إجمالي الإيرادات',
+      value: formatIQD(summary?.totalRevenue),
+      icon: IconRevenue,
+      accent: 'accent',
+    },
+    {
+      label: 'الأقساط المعالجة',
+      value: summary?.totalInstallmentsProcessed?.toLocaleString('ar-IQ') ?? '—',
+      icon: IconRevenue,
+      accent: 'blue',
+    },
+    {
+      label: 'المجموعات النشطة',
+      value: summary?.totalActiveGroups?.toLocaleString('ar-IQ') ?? '—',
+      icon: IconGroups2,
+      accent: 'purple',
+    },
+    {
+      label: 'إجمالي الأعضاء',
+      value: summary?.totalMembers?.toLocaleString('ar-IQ') ?? '—',
+      icon: IconMembers,
+      accent: 'blue',
+    },
+    {
+      label: 'رصيد صندوق الطوارئ',
+      value: formatIQD(summary?.emergencyFundBalance),
+      icon: IconFund,
+      accent: 'accent',
+    },
+    {
+      label: 'حالات التعثر',
+      value: summary?.totalDefaults?.toLocaleString('ar-IQ') ?? '—',
+      icon: IconAlert,
+      accent: 'red',
+    },
+  ]
+
+  return (
+    <>
+      <PageHeader
+        title="المالية والإيرادات"
+        subtitle="نظرة عامة على الأداء المالي والإيرادات"
+      />
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+        {stats.map((s) => (
+          <StatCard key={s.label} {...s} />
+        ))}
+      </div>
+
+      <Card title="سجل الإيرادات">
+        <DataTable columns={columns} data={revenue} emptyMessage="لا توجد إيرادات مسجلة" />
+      </Card>
+    </>
+  )
+}
