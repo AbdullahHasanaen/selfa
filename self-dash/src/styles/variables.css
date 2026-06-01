@@ -1,0 +1,24 @@
+:root primary{
+    --primary-3-color: #16280b;
+    --primary-2-color: #30491e;
+    --primary-1-color: #37551f;
+  --primary-color: #416a20;
+  --primary1-color: #548b25;
+  --primary2-color: #6faf33;
+  --primary3-color: #8dca51;
+  --primary4-color: #cdeaac;
+  --primary5-color: #e5f4d3;
+
+}
+:root secondary{
+    --secondary-3-color: #7a1e3c;
+    --secondary-2-color: #9b2a5b;
+    --secondary-1-color: #c23f7e;
+
+  --secondary-color: #e24a7a;
+    --secondary1-color: #e86b9c;
+    --secondary2-color: #eb8cbf;
+    --secondary3-color: #f1a0d8;
+    --secondary4-color: #f7c3e1;
+    --secondary5-color: #fce9f0;
+}
